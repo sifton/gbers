@@ -33,9 +33,11 @@ pub enum Component {
   MMM,
   RAM,
   SRAM,
+  Timer,
   Rumble,
   PocketCam,
   BandaiTAMA5,
+  HudsonHUC1,
   HudsonHUC3,
 }
 
@@ -118,6 +120,7 @@ impl<'a> Cartridge {
 }
 
 // TODO use more specific param than just byte vec
+// TODO ...is there any way to determine that we're not reading garbage? does it matter?
 fn read_title(rom: &Vec<u8>) -> String {
   String::from_utf8_lossy(regions::META_TITLE.cut_slice(rom)).into_owned()
 }
@@ -136,6 +139,9 @@ fn decode_components(rom: &Vec<u8>) -> Result<Vec<Component>, ()> {
     0xB => vec![Component::ROM, Component::MMM],
     0xC => vec![Component::ROM, Component::MMM, Component::SRAM],
     0xD => vec![Component::ROM, Component::MMM, Component::SRAM, Component::Battery],
+    0xF => vec![Component::ROM, Component::MBC(3), Component::Timer, Component::Battery],
+    0x10 => vec![Component::ROM, Component::MBC(3), Component::Timer, Component::RAM, Component::Battery],
+    0x11 => vec![Component::ROM, Component::MBC(3)],
     0x12 => vec![Component::ROM, Component::MBC(3), Component::RAM],
     0x13 => vec![Component::ROM, Component::MBC(3), Component::RAM, Component::Battery],
     0x19 => vec![Component::ROM, Component::MBC(5)],
@@ -147,6 +153,7 @@ fn decode_components(rom: &Vec<u8>) -> Result<Vec<Component>, ()> {
     0x1F => vec![Component::PocketCam],
     0xFD => vec![Component::BandaiTAMA5],
     0xFE => vec![Component::HudsonHUC3],
+    0xFF => vec![Component::HudsonHUC1],
     _ => vec![],
   };
 
