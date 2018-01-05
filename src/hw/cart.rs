@@ -163,3 +163,18 @@ fn decode_components(rom: &Vec<u8>) -> Result<Vec<Component>, ()> {
     Ok(comps)
   }
 }
+
+#[cfg(test)]
+mod tests {
+
+  #[test]
+  fn test_read_title() {
+    // TODO
+  }
+
+  #[test]
+  fn test_decode_components() {
+    // TODO
+  }
+
+}
