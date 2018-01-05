@@ -1,0 +1,6 @@
+[package]
+name = "gbers"
+version = "0.1.0"
+authors = ["Brett <sifton@users.noreply.github.com>"]
+
+[dependencies]
