@@ -15,7 +15,6 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -26,7 +25,7 @@ use std::str;
 /// Lower bound is inclusive; upper bound is exclusive.
 pub struct Region(usize, usize);
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum Component {
   ROM,
   MBC(u8),
@@ -43,9 +42,10 @@ pub enum Component {
 pub struct Cartridge {
   title: String,
   rom: Vec<u8>,
-  components: HashSet<Component>,
+  components: Vec<Component>,
 }
 
+// TODO is there a better way?
 mod regions {
   use super::Region;
   pub const META_ENTRY: Region         = Region(0x100, 0x104);
@@ -77,7 +77,8 @@ impl<'a> Cartridge {
 
   pub fn new(bytes: Vec<u8>) -> Result<Cartridge, String> {
     let title = read_title(&bytes);
-    let components = read_components(&bytes);
+    // TODO do something with the error
+    let components = decode_components(&bytes).ok().unwrap();
 
     let rom = Cartridge {
       title: title,
@@ -88,6 +89,7 @@ impl<'a> Cartridge {
     Ok(rom)
   }
 
+  // TODO condense into one Result<_, _>
   pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Result<Cartridge, String>, io::Error> {
 
     let rom: Vec<u8> = {
@@ -104,26 +106,53 @@ impl<'a> Cartridge {
     self.title.as_str()
   }
 
-  pub fn components(&'a self) -> &'a HashSet<Component> {
+  pub fn components(&'a self) -> &'a Vec<Component> {
     &self.components
   }
 
   pub fn has_component(&self, cmp: Component) -> bool {
-    self.components.contains(cmp)
+    self.components.contains(&cmp)
   }
 
 
 }
 
-
+// TODO use more specific param than just byte vec
 fn read_title(rom: &Vec<u8>) -> String {
   String::from_utf8_lossy(regions::META_TITLE.cut_slice(rom)).into_owned()
 }
 
-fn read_components(rom: &Vec<u8>) -> Components {
+// TODO yield meaningful error type
+// TODO use more specific param than just byte vec
+fn decode_components(rom: &Vec<u8>) -> Result<Vec<Component>, ()> {
+  let comps = match regions::META_COMPONENTS.cut_slice(rom)[0] {
+    0x0 => vec![Component::ROM],
+    0x1 => vec![Component::ROM, Component::MBC(1)],
+    0x2 => vec![Component::ROM, Component::MBC(1), Component::RAM],
+    0x3 => vec![Component::ROM, Component::MBC(1), Component::RAM, Component::Battery],
+    0x5 => vec![Component::ROM, Component::MBC(2)],
+    0x6 => vec![Component::ROM, Component::MBC(2), Component::Battery],
+    0x8 => vec![Component::ROM, Component::RAM],
+    0xB => vec![Component::ROM, Component::MMM],
+    0xC => vec![Component::ROM, Component::MMM, Component::SRAM],
+    0xD => vec![Component::ROM, Component::MMM, Component::SRAM, Component::Battery],
+    0x12 => vec![Component::ROM, Component::MBC(3), Component::RAM],
+    0x13 => vec![Component::ROM, Component::MBC(3), Component::RAM, Component::Battery],
+    0x19 => vec![Component::ROM, Component::MBC(5)],
+    0x1A => vec![Component::ROM, Component::MBC(5), Component::RAM],
+    0x1B => vec![Component::ROM, Component::MBC(5), Component::RAM, Component::Battery],
+    0x1C => vec![Component::ROM, Component::MBC(5), Component::Rumble],
+    0x1D => vec![Component::ROM, Component::MBC(5), Component::Rumble, Component::SRAM],
+    0x1E => vec![Component::ROM, Component::MBC(5), Component::Rumble, Component::SRAM, Component::Battery],
+    0x1F => vec![Component::PocketCam],
+    0xFD => vec![Component::BandaiTAMA5],
+    0xFE => vec![Component::HudsonHUC3],
+    _ => vec![],
+  };
 
-  match regions::META_COMPONENTS.cut_slice(rom)[0] {
-    0x0 => component::ROM,
+  if comps.is_empty() {
+    Err(())
+  } else {
+    Ok(comps)
   }
-
 }
