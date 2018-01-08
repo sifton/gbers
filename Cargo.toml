@@ -5,3 +5,4 @@ authors = ["Brett <sifton@users.noreply.github.com>"]
 
 [dependencies]
 bitflags = "1.0"
+byte-slice-cast = "0.1.0"
