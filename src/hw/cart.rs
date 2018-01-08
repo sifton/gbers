@@ -99,7 +99,6 @@ impl<'a> Cartridge {
     let rom = try!(CartROM::from_raw_bytes(bytes));
 
     let title = read_title(&rom.bytes);
-    // TODO do something with the error
     let components = try!(decode_components(rom.bytes.as_slice()));
 
     let rom = Cartridge {
