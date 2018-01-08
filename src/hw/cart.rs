@@ -87,8 +87,8 @@ mod regions {
 
 impl Region {
 
-  pub fn cut_slice<'a>(&self, vec: &'a [u8]) -> &'a [u8] {
-    &vec[self.0 .. self.1 - 1]
+  pub fn extract<'a>(&self, rom: &'a CartROM) -> &'a [u8] {
+    &rom.bytes[self.0 .. self.1 - 1]
   }
 
 }
@@ -98,8 +98,8 @@ impl<'a> Cartridge {
   pub fn new(bytes: Vec<u8>) -> Result<Cartridge> {
     let rom = try!(CartROM::from_raw_bytes(bytes));
 
-    let title = read_title(&rom.bytes);
-    let components = try!(decode_components(rom.bytes.as_slice()));
+    let title = read_title(&rom);
+    let components = try!(decode_components(&rom));
 
     let rom = Cartridge {
       title: title,
@@ -147,14 +147,14 @@ impl CartROM {
 
 // TODO use more specific param than just byte vec
 // TODO ...is there any way to determine that we're not reading garbage? does it matter?
-fn read_title(rom: &[u8]) -> String {
-  String::from_utf8_lossy(regions::META_TITLE.cut_slice(rom)).into_owned()
+fn read_title(rom: &CartROM) -> String {
+  String::from_utf8_lossy(regions::META_TITLE.extract(rom)).into_owned()
 }
 
 // TODO yield meaningful error type
 // TODO use more specific param than just byte vec
-fn decode_components(rom: &[u8]) -> Result<Vec<Component>> {
-  let comps = match regions::META_COMPONENTS.cut_slice(rom)[0] {
+fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
+  let comps = match regions::META_COMPONENTS.extract(rom)[0] {
     0x0 => vec![Component::ROM],
     0x1 => vec![Component::ROM, Component::MBC(MBCCount::One)],
     0x2 => vec![Component::ROM, Component::MBC(MBCCount::One), Component::RAM],
