@@ -19,6 +19,7 @@ use std::fs;
 use std::io;
 use std::io::Read;
 use std::path::Path;
+use std::result;
 use std::str;
 
 /// Specifies a memory region within the cartridge address space.
@@ -58,6 +59,11 @@ pub struct Cartridge {
 struct CartROM {
   bytes: Vec<u8>,
 }
+pub type Result<T> = result::Result<T, CartErr>;
+
+pub enum CartErr {
+  UnknownComponents(u8),
+}
 
 // TODO is there a better way?
 mod regions {
@@ -89,12 +95,12 @@ impl Region {
 
 impl<'a> Cartridge {
 
-  pub fn new(bytes: Vec<u8>) -> Result<Cartridge, String> {
-    let rom = CartROM::from_raw_bytes(bytes).ok().unwrap();
+  pub fn new(bytes: Vec<u8>) -> Result<Cartridge> {
+    let rom = try!(CartROM::from_raw_bytes(bytes));
 
     let title = read_title(&rom.bytes);
     // TODO do something with the error
-    let components = decode_components(rom.bytes.as_slice()).ok().unwrap();
+    let components = try!(decode_components(rom.bytes.as_slice()));
 
     let rom = Cartridge {
       title: title,
@@ -106,7 +112,7 @@ impl<'a> Cartridge {
   }
 
   // TODO condense into one Result<_, _>
-  pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Result<Cartridge, String>, io::Error> {
+  pub fn from_file<P: AsRef<Path>>(path: P) -> io::Result<Result<Cartridge>> {
     let rom: Vec<u8> = {
       let mut file = try!(fs::File::open(path));
       let mut bytes = Vec::<u8>::new();
@@ -133,7 +139,7 @@ impl<'a> Cartridge {
 }
 
 impl CartROM {
-  fn from_raw_bytes(bytes: Vec<u8>) -> Result<CartROM, ()> {
+  fn from_raw_bytes(bytes: Vec<u8>) -> Result<CartROM> {
     Ok(CartROM {
       bytes,
     })
@@ -148,7 +154,7 @@ fn read_title(rom: &[u8]) -> String {
 
 // TODO yield meaningful error type
 // TODO use more specific param than just byte vec
-fn decode_components(rom: &[u8]) -> Result<Vec<Component>, ()> {
+fn decode_components(rom: &[u8]) -> Result<Vec<Component>> {
   let comps = match regions::META_COMPONENTS.cut_slice(rom)[0] {
     0x0 => vec![Component::ROM],
     0x1 => vec![Component::ROM, Component::MBC(MBCCount::One)],
@@ -183,31 +189,12 @@ fn decode_components(rom: &[u8]) -> Result<Vec<Component>, ()> {
     0xFD => vec![Component::BandaiTAMA5],
     0xFE => vec![Component::HudsonHUC3],
     0xFF => vec![Component::HudsonHUC1],
-    _ => vec![],
+    x => return Err(CartErr::UnknownComponents(x)),
   };
 
-  if comps.is_empty() {
-    Err(())
-  } else {
-    Ok(comps)
-  }
+  Ok(comps)
 }
 
 fn decode_is_cgb() {
-
-}
-
-#[cfg(test)]
-mod tests {
-
-  #[test]
-  fn test_read_title() {
-    // TODO
-  }
-
-  #[test]
-  fn test_decode_components() {
-    // TODO
-  }
 
 }
