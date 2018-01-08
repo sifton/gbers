@@ -15,6 +15,7 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+use std::convert::Into;
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -29,7 +30,7 @@ pub struct Region(usize, usize);
 #[derive(Clone, Eq, PartialEq)]
 pub enum Component {
   ROM,
-  MBC(MBCCount),
+  MBC(MBCNum),
   Battery,
   MMM,
   RAM,
@@ -42,14 +43,6 @@ pub enum Component {
   HudsonHUC3,
 }
 
-#[derive(Clone, Eq, PartialEq)]
-pub enum MBCCount {
-  One,
-  Two,
-  Three,
-  Five
-}
-
 pub struct Cartridge {
   title: String,
   rom: CartROM,
@@ -59,11 +52,45 @@ pub struct Cartridge {
 struct CartROM {
   bytes: Vec<u8>,
 }
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum ROMNum {
+  N2,
+  N4,
+  N8,
+  N16,
+  N32,
+  N64,
+  N128,
+  N72,
+  N80,
+  N96
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum RAMNum {
+  N0,
+  N1_2kB,
+  N1_8kB,
+  N3,
+  N4
+}
+
+#[derive (Clone, PartialEq, Eq)]
+pub enum MBCNum {
+  N1,
+  N2,
+  N3,
+  N5
+}
+
 pub type Result<T> = result::Result<T, CartErr>;
 
 pub enum CartErr {
   UnknownComponents(u8),
 }
+
+const KILOBYTE_BYTES: usize = 1024;
 
 // TODO is there a better way?
 mod regions {
@@ -145,6 +172,53 @@ impl CartROM {
   }
 }
 
+impl Into<u8> for MBCNum {
+  fn into(self) -> u8 {
+    match self {
+      MBCNum::N1 => 1,
+      MBCNum::N2 => 2,
+      MBCNum::N3 => 3,
+      MBCNum::N5 => 5
+    }
+  }
+}
+
+impl ROMNum {
+  pub fn size_bytes(self) -> usize {
+    const _16KB: usize = 16 * KILOBYTE_BYTES;
+    return (self as usize) * _16KB
+  }
+}
+
+impl Into<usize> for ROMNum {
+  fn into(self) -> usize {
+    match self {
+      ROMNum::N2 => 2,
+      ROMNum::N4 => 4,
+      ROMNum::N8 => 8,
+      ROMNum::N16 => 16,
+      ROMNum::N32 => 32,
+      ROMNum::N64 => 64,
+      ROMNum::N128 => 128,
+      ROMNum::N72 => 72,
+      ROMNum::N80 => 80,
+      ROMNum::N96 => 96
+    }
+  }
+}
+
+impl RAMNum {
+  pub fn size_bytes(self) -> usize {
+    match self {
+      RAMNum::N0 => 0,
+      RAMNum::N1_2kB => 2 * KILOBYTE_BYTES,
+      RAMNum::N1_8kB => 8 * KILOBYTE_BYTES,
+      RAMNum::N3 => 32 * KILOBYTE_BYTES,
+      RAMNum::N4 => 128 * KILOBYTE_BYTES,
+    }
+  }
+}
+
 // TODO use more specific param than just byte vec
 // TODO ...is there any way to determine that we're not reading garbage? does it matter?
 fn read_title(rom: &CartROM) -> String {
@@ -156,33 +230,33 @@ fn read_title(rom: &CartROM) -> String {
 fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
   let comps = match regions::META_COMPONENTS.extract(rom)[0] {
     0x0 => vec![Component::ROM],
-    0x1 => vec![Component::ROM, Component::MBC(MBCCount::One)],
-    0x2 => vec![Component::ROM, Component::MBC(MBCCount::One), Component::RAM],
-    0x3 => vec![Component::ROM, Component::MBC(MBCCount::One), Component::RAM,
+    0x1 => vec![Component::ROM, Component::MBC(MBCNum::N1)],
+    0x2 => vec![Component::ROM, Component::MBC(MBCNum::N1), Component::RAM],
+    0x3 => vec![Component::ROM, Component::MBC(MBCNum::N1), Component::RAM,
                 Component::Battery],
-    0x5 => vec![Component::ROM, Component::MBC(MBCCount::Two)],
-    0x6 => vec![Component::ROM, Component::MBC(MBCCount::Two), Component::Battery],
+    0x5 => vec![Component::ROM, Component::MBC(MBCNum::N2)],
+    0x6 => vec![Component::ROM, Component::MBC(MBCNum::N2), Component::Battery],
     0x8 => vec![Component::ROM, Component::RAM],
     0xB => vec![Component::ROM, Component::MMM],
     0xC => vec![Component::ROM, Component::MMM, Component::SRAM],
     0xD => vec![Component::ROM, Component::MMM, Component::SRAM,
                   Component::Battery],
-    0xF => vec![Component::ROM, Component::MBC(MBCCount::Three), Component::Timer,
+    0xF => vec![Component::ROM, Component::MBC(MBCNum::N3), Component::Timer,
                   Component::Battery],
-    0x10 => vec![Component::ROM, Component::MBC(MBCCount::Three), Component::Timer,
+    0x10 => vec![Component::ROM, Component::MBC(MBCNum::N3), Component::Timer,
                   Component::RAM, Component::Battery],
-    0x11 => vec![Component::ROM, Component::MBC(MBCCount::Three)],
-    0x12 => vec![Component::ROM, Component::MBC(MBCCount::Three), Component::RAM],
-    0x13 => vec![Component::ROM, Component::MBC(MBCCount::Five), Component::RAM,
+    0x11 => vec![Component::ROM, Component::MBC(MBCNum::N3)],
+    0x12 => vec![Component::ROM, Component::MBC(MBCNum::N3), Component::RAM],
+    0x13 => vec![Component::ROM, Component::MBC(MBCNum::N5), Component::RAM,
                   Component::Battery],
-    0x19 => vec![Component::ROM, Component::MBC(MBCCount::Five)],
-    0x1A => vec![Component::ROM, Component::MBC(MBCCount::Five), Component::RAM],
-    0x1B => vec![Component::ROM, Component::MBC(MBCCount::Five), Component::RAM,
+    0x19 => vec![Component::ROM, Component::MBC(MBCNum::N5)],
+    0x1A => vec![Component::ROM, Component::MBC(MBCNum::N5), Component::RAM],
+    0x1B => vec![Component::ROM, Component::MBC(MBCNum::N5), Component::RAM,
                   Component::Battery],
-    0x1C => vec![Component::ROM, Component::MBC(MBCCount::Five), Component::Rumble],
-    0x1D => vec![Component::ROM, Component::MBC(MBCCount::Five), Component::Rumble,
+    0x1C => vec![Component::ROM, Component::MBC(MBCNum::N5), Component::Rumble],
+    0x1D => vec![Component::ROM, Component::MBC(MBCNum::N5), Component::Rumble,
                   Component::SRAM],
-    0x1E => vec![Component::ROM, Component::MBC(MBCCount::Five), Component::Rumble,
+    0x1E => vec![Component::ROM, Component::MBC(MBCNum::N5), Component::Rumble,
                   Component::SRAM, Component::Battery],
     0x1F => vec![Component::PocketCam],
     0xFD => vec![Component::BandaiTAMA5],
