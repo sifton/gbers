@@ -3,5 +3,6 @@
 mod hw;
 
 fn main() {
-    println!("Hello, world!");
+  let c = hw::cart::Cartridge::from_file("pky.gbc").ok().unwrap().ok().unwrap();
+  println!("{}", c.title());
 }

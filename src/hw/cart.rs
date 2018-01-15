@@ -102,6 +102,7 @@ pub enum CartErr {
   RegionOOB,
 }
 
+
 const KILOBYTE_BYTES: usize = 1024;
 
 // TODO is there a better way?
@@ -185,7 +186,7 @@ impl CartROM {
     })
   }
 
-  fn region<T>(&self, region: &'static Region<T>) -> Result<CartROMSlice<T>> where T: PartialEq{
+  fn region<T>(&self, region: &'static Region<T>) -> Result<CartROMSlice<T>> where T: PartialEq + Clone {
     CartROMSlice::try_new(self, region)
   }
 
@@ -194,11 +195,11 @@ impl CartROM {
   }
 }
 
-impl<'a, T> CartROMSlice<'a, T> where T: PartialEq {
+impl<'a, T> CartROMSlice<'a, T> where T: PartialEq + Clone {
   fn try_new(rom: &'a CartROM, region: &'static Region<T>) -> Result<CartROMSlice<'a, T>> where T: PartialEq {
     if region.is_in_bounds(rom)
     {
-      let fixed_size: &T = unsafe { mem::transmute_copy(&rom.bytes[region.0]) };
+      let fixed_size: &T = unsafe { mem::transmute(&rom.bytes[region.0]) };
       return Ok(CartROMSlice {
         rom,
         region,
@@ -208,8 +209,8 @@ impl<'a, T> CartROMSlice<'a, T> where T: PartialEq {
     Err(CartErr::RegionOOB)
   }
 
-  fn bytes(&self) -> &'a T {
-    self.bytes
+  fn clone_raw(&self) -> T {
+    self.bytes.clone()
   }
 }
 
@@ -263,7 +264,7 @@ impl RAMNum {
 // TODO use more specific param than just byte vec
 // TODO ...is there any way to determine that we're not reading garbage? does it matter?
 fn read_title(rom: &CartROM) -> Result<String> {
-  Ok(String::from_utf8_lossy(rom.region(&regions::META_TITLE)?.bytes()).into_owned())
+  Ok(String::from_utf8_lossy(&rom.region(&regions::META_TITLE)?.clone_raw()).into_owned())
 }
 
 // TODO yield meaningful error type
@@ -272,7 +273,7 @@ fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
   let _romnum = try!(decode_rom_size(rom));
   let _ramnum = try!(decode_ram_size(rom));
 
-  let comps = match *rom.region(&regions::META_COMPONENTS)?.bytes() {
+  let comps = match rom.region(&regions::META_COMPONENTS)?.clone_raw() {
     0x0 => vec![Component::ROM(_romnum)],
     0x1 => vec![Component::ROM(_romnum), Component::MBC(MBCNum::N1)],
     0x2 => vec![Component::ROM(_romnum), Component::MBC(MBCNum::N1), Component::RAM(_ramnum)],
@@ -313,12 +314,12 @@ fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
 }
 
 fn decode_rom_size(rom: &CartROM) -> Result<ROMNum> {
-  let raw = rom.region(&regions::META_ROM_SIZE)?.bytes();
-unimplemented!()
+  let raw = rom.region(&regions::META_ROM_SIZE)?.clone_raw();
+  Ok(ROMNum::N2)
 }
 
 fn decode_ram_size(rom: &CartROM) -> Result<RAMNum> {
-unimplemented!()
+  Ok(RAMNum::N0)
 }
 
 fn decode_is_cgb() {
