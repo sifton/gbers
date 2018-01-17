@@ -1,5 +1,6 @@
-
 use super::cart;
+
+mod instr;
 
 trait Register<T> {
   fn get(&self) -> T;

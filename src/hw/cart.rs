@@ -25,10 +25,7 @@ use std::path::Path;
 use std::result;
 use std::str;
 
-/// Specifies a memory region within the cartridge address space.
-/// Lower bound is inclusive; upper bound is exclusive.
-#[derive(Debug)]
-pub struct Region<'a, T: 'a>(usize, usize, PhantomData<&'a T>);
+use self::regions::Region;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Component {
@@ -117,7 +114,12 @@ const KILOBYTE_BYTES: usize = 1024;
 // TODO is there a better way?
 pub mod regions {
   use std::marker::PhantomData;
-  use super::Region;
+
+  /// Specifies a memory region within the cartridge address space.
+  /// Lower bound is inclusive; upper bound is exclusive.
+  #[derive(Debug)]
+  pub struct Region<'a, T: 'a>(pub usize, pub usize, PhantomData<&'a T>);
+
   pub const META_ENTRY: Region<[u8; 0x4]>  = Region(0x100, 0x104, PhantomData);
   pub const META_LOGO: Region<[u8; 0x30]>   = Region(0x104, 0x134, PhantomData);
   pub const META_TITLE: Region<[u8; 0x10]>  = Region(0x134, 0x144, PhantomData);
@@ -136,7 +138,7 @@ pub mod regions {
 
   pub const RANGE_CHECKSUM: Region<[u8; 0x14D - 0x134]> = Region(0x134, 0x14D, PhantomData);
 
-  pub const EXEC_BOOT: Region<[u8; 256]>   = Region(0x0, 0x255, PhantomData);
+  pub const EXEC_BOOT: Region<[u8; 256]>   = Region(0x0, 0x256, PhantomData);
 }
 
 impl<'a, T> Region<'a, T> where T: PartialEq {
