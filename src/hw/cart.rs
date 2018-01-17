@@ -106,6 +106,7 @@ pub enum CartErr {
   UnknownROMSize(usize),
   UnknownRAMSize(usize),
   IOError(io::Error),
+  BadHeaderChecksum(u8, u8),
   RegionOOB,
 }
 
@@ -132,6 +133,8 @@ pub mod regions {
   pub const META_CHECKSUM_HDR: Region<u8>  = Region(0x14D, 0x14E, PhantomData);
   pub const META_CHECKSUM_ALL: Region<u16> = Region(0x14E, 0x150, PhantomData);
 
+  pub const RANGE_CHECKSUM: Region<[u8; 0x14D - 0x134]> = Region(0x134, 0x14D, PhantomData);
+
   pub const EXEC_BOOT: Region<[u8; 256]>   = Region(0x0, 0x255, PhantomData);
 }
 
@@ -147,6 +150,14 @@ impl<'a, T> Region<'a, T> where T: PartialEq {
 impl<'a> Cartridge {
 
   pub fn new(bytes: Vec<u8>) -> Result<Cartridge> {
+    let x = try!(Cartridge::new_no_check(bytes));
+
+    let _ = try!(check_header_sum(&x.rom));
+
+    Ok(x)
+  }
+
+  pub fn new_no_check(bytes: Vec<u8>) -> Result<Cartridge> {
     let rom = try!(CartROM::from_raw_bytes(bytes));
 
     let title = try!(read_title(&rom));
@@ -397,4 +408,20 @@ fn decode_ram_size(rom: &CartROM) -> Result<RAMNum> {
 fn decode_is_cgb(rom: &CartROM) -> Result<bool> {
   let flag: u8 = rom.region(&regions::META_CGB_FLAG)?.into();
   Ok(flag == 0x80)
+}
+
+fn check_header_sum(rom: &CartROM) -> Result<()> {
+  let bytes = rom.region(&regions::RANGE_CHECKSUM)?.into();
+  let checksum = rom.region(&regions::META_CHECKSUM_HDR)?.into();
+
+  let mut sum: isize = 0;
+  for &b in bytes.into_iter() {
+    sum = sum - (b as isize) - 1;
+  }
+
+  if (sum & 0xFF) as u8 == checksum {
+    Ok(())
+  } else {
+    Err(CartErr::BadHeaderChecksum(sum as u8, checksum))
+  }
 }

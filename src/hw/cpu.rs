@@ -94,6 +94,12 @@ impl Register<u8> for Reg {
   }
 }
 
+impl FlagRegister for Reg {
+  fn is_set(&self, flag: Flag) -> bool {
+    (self.get() & (flag as u8)) != 0
+  }
+}
+
 impl Processor {
   pub fn new() -> Processor {
     Processor {

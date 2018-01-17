@@ -7,7 +7,7 @@ fn main() {
 
   match c {
     Ok(y) => {
-      println!("{}", y.title());
+      println!("Title: {}", y.title());
       println!("COMPONENTS LIST:");
       for comp in y.components() {
         println!("  {:?}", comp);
