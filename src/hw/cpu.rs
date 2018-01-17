@@ -35,7 +35,7 @@ impl Register<u16> for CompositeReg<u8, u16> {
   }
 }
 
-impl<S, D> CompositeReg<S, D> where S: Clone, D: Clone {
+impl<S, D> CompositeReg<S, D> where S: Clone, D: Clone, {
 
   fn upper(&self) -> &Reg<S> {
     &self.upper
@@ -54,6 +54,26 @@ impl<S, D> CompositeReg<S, D> where S: Clone, D: Clone {
   }
 }
 
+impl CompositeReg<u8, u16> {
+  fn new(initial: u16) -> Self {
+    let mut x = CompositeReg {
+      upper: Reg::new(0),
+      lower: Reg::new(0),
+      data: PhantomData,
+    };
+    x.set(initial);
+    x
+  }
+}
+
+impl<T> Reg<T> where T: Clone {
+  fn new(initial: T) -> Self {
+    Reg {
+      value: initial,
+    }
+  }
+}
+
 impl<T> Register<T> for Reg<T> where T: Clone {
   fn get(&self) -> T {
     self.value.clone()
@@ -62,4 +82,22 @@ impl<T> Register<T> for Reg<T> where T: Clone {
   fn set(&mut self, new_value: T) {
     self.value = new_value;
   }
+}
+
+impl Processor {
+  pub fn new() -> Processor {
+    Processor {
+      reg_af: CompositeReg::new(0),
+      reg_bc: CompositeReg::new(0),
+      reg_de: CompositeReg::new(0),
+      reg_hl: CompositeReg::new(0),
+      reg_pc: Reg::new(0),
+      reg_sp: Reg::new(0)
+    }
+  }
+
+  pub fn start(&mut self) {
+    
+  }
+
 }
