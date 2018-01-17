@@ -15,8 +15,7 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::any::TypeId;
-use std::convert::{Into, TryInto};
+use std::convert::{Into, TryFrom, TryInto};
 use std::fs;
 use std::io;
 use std::io::Read;
@@ -28,9 +27,10 @@ use std::str;
 
 /// Specifies a memory region within the cartridge address space.
 /// Lower bound is inclusive; upper bound is exclusive.
+#[derive(Debug)]
 pub struct Region<'a, T: 'a>(usize, usize, PhantomData<&'a T>);
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Component {
   ROM(ROMNum),
   MBC(MBCNum),
@@ -46,23 +46,28 @@ pub enum Component {
   HudsonHUC3,
 }
 
+#[derive(Debug)]
 pub struct Cartridge {
   title: String,
+  is_cgb: bool,
   rom: CartROM,
   components: Vec<Component>,
 }
 
+#[derive(Debug)]
 struct CartROM {
   bytes: Vec<u8>,
 }
 
+#[derive(Debug)]
 struct CartROMSlice<'a, T: PartialEq + 'static> {
   rom: &'a CartROM,
   region: &'a Region<'a, T>,
-  bytes: &'a T,
+  bytes: &'a [u8],
+  converted: &'a T,
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ROMNum {
   N2,
   N4,
@@ -76,7 +81,7 @@ pub enum ROMNum {
   N96
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RAMNum {
   N0,
   N1_2kB,
@@ -85,7 +90,7 @@ pub enum RAMNum {
   N4
 }
 
-#[derive (Clone, PartialEq, Eq)]
+#[derive (Clone, Debug, PartialEq, Eq)]
 pub enum MBCNum {
   N1,
   N2,
@@ -95,6 +100,7 @@ pub enum MBCNum {
 
 pub type Result<T> = result::Result<T, CartErr>;
 
+#[derive(Debug)]
 pub enum CartErr {
   UnknownComponents(u8),
   UnknownROMSize(usize),
@@ -129,8 +135,8 @@ mod regions {
 impl<'a, T> Region<'a, T> where T: PartialEq {
 
   fn is_in_bounds(&self, rom: &'a CartROM) -> bool {
-    !(self.0 < 0 || self.0 >= rom.size_bytes()
-      || self.1 < 0 || self.1 < self.0 || self.1 >= rom.size_bytes())
+    !(self.0 >= rom.size_bytes() || self.1 < self.0
+      || self.1 >= rom.size_bytes())
   }
 
 }
@@ -142,9 +148,11 @@ impl<'a> Cartridge {
 
     let title = try!(read_title(&rom));
     let components = try!(decode_components(&rom));
+    let is_cgb = try!(decode_is_cgb(&rom));
 
     let rom = Cartridge {
       title: title,
+      is_cgb,
       rom: rom,
       components: components,
     };
@@ -176,6 +184,10 @@ impl<'a> Cartridge {
     self.components.contains(&cmp)
   }
 
+  pub fn is_cgb(&self) -> bool {
+    self.is_cgb
+  }
+
 
 }
 
@@ -203,14 +215,23 @@ impl<'a, T> CartROMSlice<'a, T> where T: PartialEq + Clone {
       return Ok(CartROMSlice {
         rom,
         region,
-        bytes: &fixed_size,
+        bytes: &rom.bytes[region.0 .. region.1],
+        converted: &fixed_size,
       })
     }
     Err(CartErr::RegionOOB)
   }
 
-  fn clone_raw(&self) -> T {
-    self.bytes.clone()
+  fn into(self) -> T {
+    self.converted.clone()
+  }
+
+  fn copy_out(&self) -> T {
+    self.converted.clone()
+  }
+
+  fn bytes(&self) -> &'a [u8] {
+    self.bytes
   }
 }
 
@@ -235,16 +256,35 @@ impl ROMNum {
 impl Into<usize> for ROMNum {
   fn into(self) -> usize {
     match self {
-      ROMNum::N2 => 2,
-      ROMNum::N4 => 4,
-      ROMNum::N8 => 8,
-      ROMNum::N16 => 16,
-      ROMNum::N32 => 32,
-      ROMNum::N64 => 64,
-      ROMNum::N128 => 128,
-      ROMNum::N72 => 72,
-      ROMNum::N80 => 80,
-      ROMNum::N96 => 96
+      ROMNum::N2 => 0,
+      ROMNum::N4 => 1,
+      ROMNum::N8 => 2,
+      ROMNum::N16 => 3,
+      ROMNum::N32 => 4,
+      ROMNum::N64 => 5,
+      ROMNum::N128 => 6,
+      ROMNum::N72 => 0x52,
+      ROMNum::N80 => 0x53,
+      ROMNum::N96 => 0x54
+    }
+  }
+}
+
+impl TryFrom<usize> for ROMNum {
+  type Error = CartErr;
+  fn try_from(other: usize) -> Result<ROMNum> {
+    match other {
+      0 => Ok(ROMNum::N2),
+      1 => Ok(ROMNum::N4),
+      2 => Ok(ROMNum::N8),
+      3 => Ok(ROMNum::N16),
+      4 => Ok(ROMNum::N32),
+      5 => Ok(ROMNum::N64),
+      6 => Ok(ROMNum::N128),
+      0x52 => Ok(ROMNum::N72),
+      0x53 => Ok(ROMNum::N80),
+      0x54 => Ok(ROMNum::N96),
+      _ => Err(CartErr::UnknownROMSize(other))
     }
   }
 }
@@ -261,19 +301,44 @@ impl RAMNum {
   }
 }
 
+impl Into<usize> for RAMNum {
+  fn into(self) -> usize {
+    match self {
+      RAMNum::N0 => 0,
+      RAMNum::N1_2kB => 1,
+      RAMNum::N1_8kB => 2,
+      RAMNum::N3 => 3,
+      RAMNum::N4 => 4
+    }
+  }
+}
+
+impl TryFrom<usize> for RAMNum {
+  type Error = CartErr;
+  fn try_from(other: usize) -> Result<RAMNum> {
+    match other {
+      0 => Ok(RAMNum::N0),
+      1 => Ok(RAMNum::N1_2kB),
+      2 => Ok(RAMNum::N1_8kB),
+      3 => Ok(RAMNum::N3),
+      4 => Ok(RAMNum::N4),
+      _ => Err(CartErr::UnknownRAMSize(other))
+    }
+  }
+}
+
+
 // TODO use more specific param than just byte vec
 // TODO ...is there any way to determine that we're not reading garbage? does it matter?
 fn read_title(rom: &CartROM) -> Result<String> {
-  Ok(String::from_utf8_lossy(&rom.region(&regions::META_TITLE)?.clone_raw()).into_owned())
+  Ok(String::from_utf8_lossy(&rom.region(&regions::META_TITLE)?.into()).into_owned())
 }
 
-// TODO yield meaningful error type
-// TODO use more specific param than just byte vec
 fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
   let _romnum = try!(decode_rom_size(rom));
   let _ramnum = try!(decode_ram_size(rom));
 
-  let comps = match rom.region(&regions::META_COMPONENTS)?.clone_raw() {
+  let comps = match rom.region(&regions::META_COMPONENTS)?.into() {
     0x0 => vec![Component::ROM(_romnum)],
     0x1 => vec![Component::ROM(_romnum), Component::MBC(MBCNum::N1)],
     0x2 => vec![Component::ROM(_romnum), Component::MBC(MBCNum::N1), Component::RAM(_ramnum)],
@@ -314,14 +379,14 @@ fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
 }
 
 fn decode_rom_size(rom: &CartROM) -> Result<ROMNum> {
-  let raw = rom.region(&regions::META_ROM_SIZE)?.clone_raw();
-  Ok(ROMNum::N2)
+  (rom.region(&regions::META_ROM_SIZE)?.into() as usize).try_into()
 }
 
 fn decode_ram_size(rom: &CartROM) -> Result<RAMNum> {
-  Ok(RAMNum::N0)
+  (rom.region(&regions::META_RAM_SIZE)?.into() as usize).try_into()
 }
 
-fn decode_is_cgb() {
-
+fn decode_is_cgb(rom: &CartROM) -> Result<bool> {
+  let flag: u8 = rom.region(&regions::META_CGB_FLAG)?.into();
+  Ok(flag == 0x80)
 }
