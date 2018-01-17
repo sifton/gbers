@@ -28,10 +28,29 @@ impl Register<u16> for CompositeReg<u8, u16> {
   fn get(&self) -> u16 {
     ((self.upper.get() << 8 + self.lower.get()) as u16)
   }
-  
+
   fn set(&mut self, new_value: u16) {
     self.upper.set((new_value >> 8) as u8);
     self.lower.set((new_value & 0xFF) as u8);
+  }
+}
+
+impl<S, D> CompositeReg<S, D> where S: Clone, D: Clone {
+
+  fn upper(&self) -> &Reg<S> {
+    &self.upper
+  }
+
+  fn upper_mut(&mut self) -> &mut Reg<S> {
+    &mut self.upper
+  }
+
+  fn lower(&self) -> &Reg<S> {
+    &self.lower
+  }
+
+  fn lower_mut(&mut self) -> &mut Reg<S> {
+    &mut self.lower
   }
 }
 

@@ -105,6 +105,7 @@ pub enum CartErr {
   UnknownComponents(u8),
   UnknownROMSize(usize),
   UnknownRAMSize(usize),
+  IOError(io::Error),
   RegionOOB,
 }
 
@@ -161,15 +162,20 @@ impl<'a> Cartridge {
   }
 
   // TODO condense into one Result<_, _>
-  pub fn from_file<P: AsRef<Path>>(path: P) -> io::Result<Result<Cartridge>> {
+  pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Cartridge> {
     let rom: Vec<u8> = {
-      let mut file = try!(fs::File::open(path));
+      let mut file = match fs::File::open(path) {
+        Ok(x) => x,
+        Err(x) => return Err(CartErr::IOError(x))
+      };
       let mut bytes = Vec::<u8>::new();
-      try!(file.read_to_end(&mut bytes));
-      bytes
+      match file.read_to_end(&mut bytes) {
+        Ok(x) => bytes,
+        Err(x) => return Err(CartErr::IOError(x)),
+      }
     };
 
-    Ok(Cartridge::new(rom))
+    Cartridge::new(rom)
   }
 
   pub fn title(&'a self) -> &'a str {
