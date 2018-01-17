@@ -12,7 +12,8 @@ fn main() {
       for comp in y.components() {
         println!("  {:?}", comp);
       }
-      println!("Is CGB: {}", y.is_cgb())
+      println!("Is CGB: {}", y.is_cgb());
+      println!("Is SGB: {}", y.is_sgb());
     },
     Err(y) => println!("{:?}", y),
   }

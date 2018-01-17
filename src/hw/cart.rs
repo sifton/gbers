@@ -50,18 +50,19 @@ pub enum Component {
 pub struct Cartridge {
   title: String,
   is_cgb: bool,
-  rom: CartROM,
+  is_sgb: bool,
+  rom: ROM,
   components: Vec<Component>,
 }
 
 #[derive(Debug)]
-struct CartROM {
+struct ROM {
   bytes: Vec<u8>,
 }
 
 #[derive(Debug)]
-struct CartROMSlice<'a, T: PartialEq + 'static> {
-  rom: &'a CartROM,
+struct ROMSlice<'a, T: PartialEq + 'static> {
+  rom: &'a ROM,
   region: &'a Region<'a, T>,
   bytes: &'a [u8],
   converted: &'a T,
@@ -123,7 +124,7 @@ pub mod regions {
   pub const META_MANUFACTURER: Region<u32>  = Region(0x13F, 0x143, PhantomData);
   pub const META_CGB_FLAG: Region<u8>      = Region(0x143, 0x144, PhantomData);
   pub const META_LICENSEE: Region<u16>      = Region(0x144, 0x146, PhantomData);
-  pub const META_SGB: Region<u8>           = Region(0x146, 0x147, PhantomData);
+  pub const META_SGB_FLAG: Region<u8>           = Region(0x146, 0x147, PhantomData);
   pub const META_COMPONENTS: Region<u8>    = Region(0x147, 0x148, PhantomData);
   pub const META_ROM_SIZE: Region<u8>      = Region(0x148, 0x149, PhantomData);
   pub const META_RAM_SIZE: Region<u8>      = Region(0x149, 0x14A, PhantomData);
@@ -140,7 +141,7 @@ pub mod regions {
 
 impl<'a, T> Region<'a, T> where T: PartialEq {
 
-  fn is_in_bounds(&self, rom: &'a CartROM) -> bool {
+  fn is_in_bounds(&self, rom: &'a ROM) -> bool {
     !(self.0 >= rom.size_bytes() || self.1 < self.0
       || self.1 >= rom.size_bytes())
   }
@@ -158,15 +159,17 @@ impl<'a> Cartridge {
   }
 
   pub fn new_no_check(bytes: Vec<u8>) -> Result<Cartridge> {
-    let rom = try!(CartROM::from_raw_bytes(bytes));
+    let rom = try!(ROM::from_raw_bytes(bytes));
 
     let title = try!(read_title(&rom));
     let components = try!(decode_components(&rom));
     let is_cgb = try!(decode_is_cgb(&rom));
+    let is_sgb = try!(decode_is_sgb(&rom));
 
     let rom = Cartridge {
       title: title,
       is_cgb,
+      is_sgb,
       rom: rom,
       components: components,
     };
@@ -207,18 +210,22 @@ impl<'a> Cartridge {
     self.is_cgb
   }
 
+  pub fn is_sgb(&self) -> bool {
+    self.is_sgb
+  }
+
 
 }
 
-impl CartROM {
-  fn from_raw_bytes(bytes: Vec<u8>) -> Result<CartROM> {
-    Ok(CartROM {
+impl ROM {
+  fn from_raw_bytes(bytes: Vec<u8>) -> Result<ROM> {
+    Ok(ROM {
       bytes,
     })
   }
 
-  fn region<T>(&self, region: &'static Region<T>) -> Result<CartROMSlice<T>> where T: PartialEq + Clone {
-    CartROMSlice::try_new(self, region)
+  fn region<T>(&self, region: &'static Region<T>) -> Result<ROMSlice<T>> where T: PartialEq + Clone {
+    ROMSlice::try_new(self, region)
   }
 
   fn size_bytes(&self) -> usize {
@@ -226,12 +233,12 @@ impl CartROM {
   }
 }
 
-impl<'a, T> CartROMSlice<'a, T> where T: PartialEq + Clone {
-  fn try_new(rom: &'a CartROM, region: &'static Region<T>) -> Result<CartROMSlice<'a, T>> where T: PartialEq {
+impl<'a, T> ROMSlice<'a, T> where T: PartialEq + Clone {
+  fn try_new(rom: &'a ROM, region: &'static Region<T>) -> Result<ROMSlice<'a, T>> where T: PartialEq {
     if region.is_in_bounds(rom)
     {
       let fixed_size: &T = unsafe { mem::transmute(&rom.bytes[region.0]) };
-      return Ok(CartROMSlice {
+      return Ok(ROMSlice {
         rom,
         region,
         bytes: &rom.bytes[region.0 .. region.1],
@@ -349,11 +356,11 @@ impl TryFrom<usize> for RAMNum {
 
 // TODO use more specific param than just byte vec
 // TODO ...is there any way to determine that we're not reading garbage? does it matter?
-fn read_title(rom: &CartROM) -> Result<String> {
+fn read_title(rom: &ROM) -> Result<String> {
   Ok(String::from_utf8_lossy(&rom.region(&regions::META_TITLE)?.into()).into_owned())
 }
 
-fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
+fn decode_components(rom: &ROM) -> Result<Vec<Component>> {
   let _romnum = try!(decode_rom_size(rom));
   let _ramnum = try!(decode_ram_size(rom));
 
@@ -397,20 +404,25 @@ fn decode_components(rom: &CartROM) -> Result<Vec<Component>> {
   Ok(comps)
 }
 
-fn decode_rom_size(rom: &CartROM) -> Result<ROMNum> {
+fn decode_rom_size(rom: &ROM) -> Result<ROMNum> {
   (rom.region(&regions::META_ROM_SIZE)?.into() as usize).try_into()
 }
 
-fn decode_ram_size(rom: &CartROM) -> Result<RAMNum> {
+fn decode_ram_size(rom: &ROM) -> Result<RAMNum> {
   (rom.region(&regions::META_RAM_SIZE)?.into() as usize).try_into()
 }
 
-fn decode_is_cgb(rom: &CartROM) -> Result<bool> {
+fn decode_is_cgb(rom: &ROM) -> Result<bool> {
   let flag: u8 = rom.region(&regions::META_CGB_FLAG)?.into();
   Ok(flag == 0x80)
 }
 
-fn check_header_sum(rom: &CartROM) -> Result<()> {
+fn decode_is_sgb(rom: &ROM) -> Result<bool> {
+  let flag: u8 = rom.region(&regions::META_SGB_FLAG)?.into();
+  Ok(flag == 0x3)
+}
+
+fn check_header_sum(rom: &ROM) -> Result<()> {
   let bytes = rom.region(&regions::RANGE_CHECKSUM)?.into();
   let checksum = rom.region(&regions::META_CHECKSUM_HDR)?.into();
 
