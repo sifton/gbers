@@ -62,7 +62,6 @@ struct ROMSlice<'a, T: PartialEq + 'static> {
   rom: &'a ROM,
   region: &'a Region<'a, T>,
   bytes: &'a [u8],
-  converted: &'a T,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -239,23 +238,23 @@ impl<'a, T> ROMSlice<'a, T> where T: PartialEq + Clone {
   fn try_new(rom: &'a ROM, region: &'static Region<T>) -> Result<ROMSlice<'a, T>> where T: PartialEq {
     if region.is_in_bounds(rom)
     {
-      let fixed_size: &T = unsafe { mem::transmute(&rom.bytes[region.0]) };
       return Ok(ROMSlice {
         rom,
         region,
         bytes: &rom.bytes[region.0 .. region.1],
-        converted: &fixed_size,
       })
     }
     Err(CartErr::RegionOOB)
   }
 
   fn into(self) -> T {
-    self.converted.clone()
+    self.convert_from()
   }
 
-  fn copy_out(&self) -> T {
-    self.converted.clone()
+  fn convert_from(&self) -> T {
+    let converted: &T = unsafe { mem::transmute(&self.bytes[self.region.0]) };
+
+    converted.clone()
   }
 
   fn bytes(&self) -> &'a [u8] {
